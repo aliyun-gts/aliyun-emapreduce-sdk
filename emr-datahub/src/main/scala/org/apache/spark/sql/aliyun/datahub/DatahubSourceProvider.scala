@@ -22,16 +22,16 @@ import java.util.concurrent.locks.{ReadWriteLock, ReentrantReadWriteLock}
 
 import scala.collection.JavaConverters._
 import scala.collection.mutable
-
 import com.aliyun.datahub.client.{DatahubClient, DatahubClientBuilder}
 import com.aliyun.datahub.client.auth.AliyunAccount
 import com.aliyun.datahub.client.common.DatahubConfig
 import com.aliyun.datahub.client.http.HttpConfig
 import org.apache.commons.cli.MissingArgumentException
-
 import org.apache.spark.internal.Logging
-import org.apache.spark.sql.{AnalysisException, DataFrame, SaveMode, SQLContext}
+import org.apache.spark.sql.{AnalysisException, DataFrame, Row, SQLContext, SaveMode}
 import org.apache.spark.sql.catalyst.InternalRow
+import org.apache.spark.sql.catalyst.util.quoteIdentifier
+import org.apache.spark.sql.catalyst.util24.escapeSingleQuotedString
 import org.apache.spark.sql.sources._
 import org.apache.spark.sql.sources.v2._
 import org.apache.spark.sql.sources.v2.reader.streaming.{ContinuousReader, MicroBatchReader}
@@ -83,13 +83,23 @@ class DatahubSourceProvider extends DataSourceRegister
     val startingStreamOffsets = DatahubOffsetRangeLimit.getOffsetRangeLimit(caseInsensitiveParams,
       "startingoffsets", LatestOffsetRangeLimit)
 
+    // toDDL @since spark 2.4.0, 2.3.4 don't support, by gaoju 2020-08-14
+    // val schemaDDL: String = schema.orElse(new StructType()).toDDL)
+    val schemaDDL: String = schema.orElse(new StructType()).fields.map(filed => {
+      val comment = filed.getComment()
+        .map(escapeSingleQuotedString)
+        .map(" COMMENT '" + _ + "'")
+
+      s"${quoteIdentifier(filed.name)} ${filed.dataType.sql}${comment.getOrElse("")}"
+    }).mkString(",")
+
     new DatahubMicroBatchReader(
       datahubOffsetReader,
       options,
       checkpointLocation,
       startingStreamOffsets,
       caseInsensitiveParams.getOrElse("failondataloss", "true").toBoolean,
-      Some(schema.orElse(new StructType()).toDDL))
+      Some(schemaDDL))
   }
 
   override def createStreamWriter(
@@ -133,7 +143,7 @@ class DatahubSourceProvider extends DataSourceRegister
     data.foreachPartition { it =>
       val writer = new DatahubWriter(project, topic, parameters, None)
         .createWriterFactory().createDataWriter(-1, -1, -1)
-      it.foreach(t => writer.write(t.asInstanceOf[InternalRow]))
+      it.foreach(t => writer.write(t.asInstanceOf[Row]))
     }
 
     /* This method is suppose to return a relation that reads the data that was written.

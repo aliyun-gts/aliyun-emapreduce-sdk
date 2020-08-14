@@ -20,11 +20,11 @@ package org.apache.spark.sql.aliyun.datahub
 import com.aliyun.datahub.client.DatahubClient
 import com.aliyun.datahub.client.exception._
 import com.aliyun.datahub.client.model._
+
 import scala.collection._
 import scala.collection.JavaConverters._
-
 import org.apache.spark.internal.Logging
-import org.apache.spark.sql.catalyst.InternalRow
+import org.apache.spark.sql.Row
 import org.apache.spark.sql.sources.v2.writer.{DataWriter, WriterCommitMessage}
 import org.apache.spark.sql.types._
 
@@ -34,7 +34,7 @@ class DatahubDataWriter(
     project: Option[String],
     topic: Option[String],
     sourceOptions: immutable.Map[String, String],
-    schema: Option[StructType]) extends DataWriter[InternalRow] with Logging {
+    schema: Option[StructType]) extends DataWriter[Row] with Logging {
 
   private val client = DatahubSourceProvider.getOrCreateDatahubClientV2(sourceOptions)
 
@@ -59,7 +59,7 @@ class DatahubDataWriter(
   override def abort(): Unit = {
   }
 
-  override def write(row: InternalRow): Unit = {
+  override def write(row: Row): Unit = {
     try {
       val recordEntry = convertRowToRecordEntry(row)
       checkError()
@@ -95,7 +95,7 @@ class DatahubDataWriter(
     }
   }
 
-  private def convertRowToRecordEntry(row: InternalRow): RecordEntry = {
+  private def convertRowToRecordEntry(row: Row): RecordEntry = {
 
     val record: RecordEntry = new RecordEntry()
     val data: RecordData = getRecordResult.getRecordType match {
@@ -109,8 +109,10 @@ class DatahubDataWriter(
               case FieldType.BIGINT => tuple.setField(idx, row.getLong(idx))
               case FieldType.TIMESTAMP => tuple.setField(idx, row.getLong(idx))
               case FieldType.BOOLEAN => tuple.setField(idx, row.getBoolean(idx))
+              // case FieldType.DECIMAL =>
+              //  tuple.setField(idx, row.getDecimal(idx, precision, scale).toJavaBigDecimal)
               case FieldType.DECIMAL =>
-                tuple.setField(idx, row.getDecimal(idx, precision, scale).toJavaBigDecimal)
+                tuple.setField(idx, row.getDecimal(idx))
               case FieldType.DOUBLE => tuple.setField(idx, row.getDouble(idx))
               case _ => tuple.setField(idx, row.getString(idx))
             }

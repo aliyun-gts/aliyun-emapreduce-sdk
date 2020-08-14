@@ -18,9 +18,8 @@
 package org.apache.spark.sql.aliyun.datahub
 
 import com.aliyun.datahub.model.RecordEntry
-
 import org.apache.spark.sql.catalyst.expressions.UnsafeRow
-import org.apache.spark.sql.catalyst.expressions.codegen.UnsafeRowWriter
+import org.apache.spark.sql.catalyst.expressions.codegen.{BufferHolder, UnsafeRowWriter}
 import org.apache.spark.sql.catalyst.util.DateTimeUtils
 import org.apache.spark.sql.types._
 import org.apache.spark.unsafe.types.UTF8String
@@ -28,7 +27,12 @@ import org.apache.spark.unsafe.types.UTF8String
 class DatahubRecordToUnsafeRowConverter(
     schema: StructType,
     sourceOptions: Map[String, String]) {
-  private val rowWriter = new UnsafeRowWriter(schema.fields.length)
+  /**
+   * 兼容spark 2.3.4版本增加如下代码, gaoju 2020-08-13
+   */
+  // private val rowWriter = new UnsafeRowWriter(schema.fields.length)
+  private val unsafeRow: UnsafeRow = new UnsafeRow()
+  private val rowWriter = new UnsafeRowWriter(new BufferHolder(unsafeRow), schema.fields.length)
   private lazy val precision = sourceOptions("decimal.precision").toInt
   private lazy val scale = sourceOptions("decimal.scale").toInt
 
@@ -90,6 +94,10 @@ class DatahubRecordToUnsafeRowConverter(
       idx += 1
     })
 
-    rowWriter.getRow
+    /**
+     * 兼容spark 2.3.4版本修改如下代码，注释掉2.3.4不支持的getRow方法调用，直接返回unsafeRow, gaoju 2020-08-13
+     */
+    // rowWriter.getRow
+    unsafeRow
   }
 }

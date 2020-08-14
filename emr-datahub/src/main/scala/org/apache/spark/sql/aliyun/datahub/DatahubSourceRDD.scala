@@ -23,6 +23,8 @@ import org.apache.spark.{Partition, SparkContext, TaskContext}
 import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.aliyun.datahub.DatahubOffsetRangeLimit._
 import org.apache.spark.sql.catalyst.InternalRow
+import org.apache.spark.sql.catalyst.util.quoteIdentifier
+import org.apache.spark.sql.catalyst.util24.escapeSingleQuotedString
 import org.apache.spark.sql.types.StructType
 import org.apache.spark.util.NextIterator
 
@@ -56,7 +58,7 @@ class DatahubSourceRDD(
         }
       }
       // Release consumer, either by removing it or indicating we're no longer using it
-      context.addTaskCompletionListener[Unit] { _ =>
+      context.addTaskCompletionListener { _ =>
         underlying.closeIfNeeded()
       }
       underlying
@@ -109,8 +111,18 @@ class DatahubSourceRDD(
       }.filter(_.size > 0)
 
     // Generate factories based on the offset ranges
-    offsetRanges.zipWithIndex.map { case (range, idx) =>
-      DatahubInputPartition(idx, range, parameters, schema.toDDL): Partition
+    offsetRanges.zipWithIndex.map { case (range, idx) => {
+      // toDDL @since spark 2.4.0, 2.3.4 don't support, by gaoju 2020-08-14
+      // val schemaDDL = schema.toDDL
+      val schemaDDL: String = schema.fields.map(filed => {
+        val comment = filed.getComment()
+          .map(escapeSingleQuotedString)
+          .map(" COMMENT '" + _ + "'")
+
+        s"${quoteIdentifier(filed.name)} ${filed.dataType.sql}${comment.getOrElse("")}"
+      }).mkString(",")
+      DatahubInputPartition(idx, range, parameters, schemaDDL): Partition
+    }
     }.toArray
   }
 

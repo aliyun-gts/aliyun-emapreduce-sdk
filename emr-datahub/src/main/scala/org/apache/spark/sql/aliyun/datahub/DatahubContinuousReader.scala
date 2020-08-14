@@ -21,17 +21,15 @@ import java.util.Optional
 import java.util.concurrent.LinkedBlockingQueue
 
 import scala.collection.JavaConverters._
-
 import com.aliyun.datahub.common.data.{Field, FieldType}
 import com.aliyun.datahub.model.GetCursorRequest.CursorType
 import com.aliyun.datahub.model.RecordEntry
-
 import org.apache.spark.TaskContext
 import org.apache.spark.internal.Logging
-import org.apache.spark.sql.SparkSession
+import org.apache.spark.sql.{Row, SparkSession}
 import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.catalyst.expressions.UnsafeRow
-import org.apache.spark.sql.catalyst.expressions.codegen.UnsafeRowWriter
+import org.apache.spark.sql.catalyst.expressions.codegen.{BufferHolder, UnsafeRowWriter}
 import org.apache.spark.sql.catalyst.util.DateTimeUtils
 import org.apache.spark.sql.sources.v2.reader._
 import org.apache.spark.sql.sources.v2.reader.streaming._
@@ -86,7 +84,7 @@ class DatahubContinuousReader(
 
   override def toString(): String = s"DatahubSource[$offsetReader]"
 
-  override def planInputPartitions(): util.List[InputPartition[InternalRow]] = {
+  def planInputPartitions(): util.List[InputPartition[InternalRow]] = {
     val startOffsets = DatahubSourceOffset.getShardOffsets(offset)
     startOffsets.toSeq.map { case (datahubShard, of) =>
       DatahubContinuousInputPartition(
@@ -94,6 +92,40 @@ class DatahubContinuousReader(
       : InputPartition[InternalRow]
     }.asJava
   }
+
+  /**
+   * 兼容spark 2.3.4版本增加 override createDataReaderFactories 代码，代码本身并无实际调用, gaoju 2020-08-13
+   **/
+  @Deprecated
+  override def createDataReaderFactories(): util.List[DataReaderFactory[Row]] = {
+    val startOffsets = DatahubSourceOffset.getShardOffsets(offset)
+    startOffsets.toSeq.map { case (datahubShard, of) =>
+      DatahubContinuousReaderFactory(
+        datahubShard.project, datahubShard.topic, datahubShard.shardId, of, sourceOptions)
+        : DataReaderFactory[Row]
+    }.asJava
+  }
+}
+
+@Deprecated
+case class DatahubContinuousReaderFactory(
+        project: String,
+        topic: String,
+        shardId: String,
+        offset: Long,
+        sourceOptions: Map[String, String]
+        )
+  extends DataReaderFactory[Row] {
+  override def createDataReader(): DataReader[Row] = {
+    new DatahubContinuousOldReader()
+  }
+}
+
+@Deprecated
+class DatahubContinuousOldReader() extends DataReader[Row] {
+  override def next(): Boolean = true
+  override def get(): Row = Row.fromSeq({""})
+  override def close(): Unit = {}
 }
 
 case class DatahubContinuousInputPartition(
@@ -132,7 +164,13 @@ class DatahubContinuousInputPartitionReader(
   private var currentRecord: RecordEntry = null
   private val fields: List[Field] =
     datahubClient.getTopic(project, topic).getRecordSchema.getFields.asScala.toList
-  private val rowWriter = new UnsafeRowWriter(4 + fields.length)
+
+  /**
+   * 兼容spark 2.3.4版本增加如下代码, gaoju 2020-08-13
+   */
+  // private val rowWriter = new UnsafeRowWriter(4 + fields.length)
+  private val unsafeRow: UnsafeRow = new UnsafeRow()
+  private val rowWriter = new UnsafeRowWriter(new BufferHolder(unsafeRow), 4 + fields.length)
 
   override def getOffset: PartitionOffset = DatahubShardOffset(project, topic, shardId, nextOffset)
 
@@ -194,7 +232,11 @@ class DatahubContinuousInputPartitionReader(
         }
     })
 
-    rowWriter.getRow
+    /**
+     * 兼容spark 2.3.4版本修改如下代码，注释掉2.3.4不支持的getRow方法调用，直接返回unsafeRow, gaoju 2020-08-13
+     */
+    // rowWriter.getRow
+    unsafeRow
   }
 
   override def close(): Unit = {

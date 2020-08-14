@@ -17,32 +17,33 @@
 
 package org.apache.spark.sql.aliyun.datahub
 
-import java.{util => ju}
 import java.io._
 import java.nio.charset.StandardCharsets
 import java.util.Optional
-
-import scala.collection.JavaConverters._
+import java.util
 
 import org.apache.commons.io.IOUtils
-
 import org.apache.spark.internal.Logging
-import org.apache.spark.sql.SparkSession
+import org.apache.spark.sql.{Row, SparkSession}
 import org.apache.spark.sql.aliyun.datahub.DatahubSourceProvider._
 import org.apache.spark.sql.catalyst.InternalRow
+import org.apache.spark.sql.catalyst.util.quoteIdentifier
+import org.apache.spark.sql.catalyst.util24.escapeSingleQuotedString
 import org.apache.spark.sql.execution.streaming.{HDFSMetadataLog, SerializedOffset}
 import org.apache.spark.sql.sources.v2.DataSourceOptions
-import org.apache.spark.sql.sources.v2.reader.InputPartition
+import org.apache.spark.sql.sources.v2.reader.{DataReader, DataReaderFactory, InputPartition}
 import org.apache.spark.sql.sources.v2.reader.streaming.{MicroBatchReader, Offset}
 import org.apache.spark.sql.types.StructType
 
+import scala.collection.JavaConverters._
+
 class DatahubMicroBatchReader(
-    @transient offsetReader: DatahubOffsetReader,
-    @transient sourceOptions: DataSourceOptions,
-    metadataPath: String,
-    startingOffsets: DatahubOffsetRangeLimit,
-    failOnDataLoss: Boolean,
-    userSpecifiedSchemaDdl: Option[String])
+                               @transient offsetReader: DatahubOffsetReader,
+                               @transient sourceOptions: DataSourceOptions,
+                               metadataPath: String,
+                               startingOffsets: DatahubOffsetRangeLimit,
+                               failOnDataLoss: Boolean,
+                               userSpecifiedSchemaDdl: Option[String])
   extends MicroBatchReader with Serializable with Logging {
 
   private val userSpecifiedSchema =
@@ -110,9 +111,9 @@ class DatahubMicroBatchReader(
   }
 
   private def rateLimit(
-      limit: Long,
-      from: Map[DatahubShard, Long],
-      until: Map[DatahubShard, Long]): Map[DatahubShard, Long] = {
+                         limit: Long,
+                         from: Map[DatahubShard, Long],
+                         until: Map[DatahubShard, Long]): Map[DatahubShard, Long] = {
     val fromNew = offsetReader.fetchEarliestOffsets()
     val sizes = until.flatMap {
       case (tp, end) =>
@@ -166,7 +167,7 @@ class DatahubMicroBatchReader(
     }
   }
 
-  override def planInputPartitions(): ju.List[InputPartition[InternalRow]] = {
+  def planInputPartitions(): util.List[InputPartition[InternalRow]] = {
     // Find the new partitions, and get their earliest offsets
     val newPartitions = endPartitionOffsets.keySet.diff(startPartitionOffsets.keySet)
     val newPartitionInitialOffsets = offsetReader.fetchEarliestOffsets(newPartitions)
@@ -204,9 +205,18 @@ class DatahubMicroBatchReader(
     }.filter(_.size > 0)
 
     // Generate factories based on the offset ranges
-    offsetRanges.map { range =>
+    // toDDL @since spark 2.4.0, 2.3.4 don't support, by gaoju 2020-08-14
+    offsetRanges.map { range => {
+      val schemaDDL: String = readSchema().fields.map(filed => {
+        val comment = filed.getComment()
+          .map(escapeSingleQuotedString)
+          .map(" COMMENT '" + _ + "'")
+
+        s"${quoteIdentifier(filed.name)} ${filed.dataType.sql}${comment.getOrElse("")}"
+      }).mkString(",")
       new DatahubMicroBatchInputPartition(range, failOnDataLoss,
-        sourceOptions.asMap().asScala.toMap, readSchema().toDDL): InputPartition[InternalRow]
+        sourceOptions.asMap().asScala.toMap, schemaDDL): InputPartition[InternalRow]
+    }
     }.asJava
   }
 
@@ -250,4 +260,81 @@ class DatahubMicroBatchReader(
       }
     }
   }
+
+  /**
+   * 兼容spark 2.3.4版本增加 override createDataReaderFactories 代码，代码本身并无实际调用, gaoju 2020-08-13
+   **/
+  @Deprecated
+  override def createDataReaderFactories(): util.List[DataReaderFactory[Row]] = {
+    // Find the new partitions, and get their earliest offsets
+    val newPartitions = endPartitionOffsets.keySet.diff(startPartitionOffsets.keySet)
+    val newPartitionInitialOffsets = offsetReader.fetchEarliestOffsets(newPartitions)
+    logInfo(s"Partitions added: $newPartitionInitialOffsets")
+
+    // Find deleted partitions, and report data loss if required
+    val deletedPartitions = startPartitionOffsets.keySet.diff(endPartitionOffsets.keySet)
+    if (deletedPartitions.nonEmpty) {
+      reportDataLoss(s"$deletedPartitions are gone. Some data may have been missed")
+    }
+
+    // Use the end partitions to calculate offset ranges to ignore partitions that have
+    // been deleted
+    val topicPartitions = endPartitionOffsets.keySet.filter { tp =>
+      // Ignore partitions that we don't know the from offsets.
+      newPartitionInitialOffsets.contains(tp) || startPartitionOffsets.contains(tp)
+    }.toSeq
+    logDebug("TopicPartitions: " + topicPartitions.mkString(", "))
+
+    val fromOffsets = startPartitionOffsets ++ newPartitionInitialOffsets
+    val untilOffsets = endPartitionOffsets
+    untilOffsets.foreach { case (tp, untilOffset) =>
+      fromOffsets.get(tp).foreach { fromOffset =>
+        if (untilOffset < fromOffset) {
+          reportDataLoss(s"Partition $tp's offset was changed from " +
+            s"$fromOffset to $untilOffset, some data may have been missed")
+        }
+      }
+    }
+
+    val partitionsToRead = untilOffsets.keySet.intersect(fromOffsets.keySet)
+
+    val offsetRanges = partitionsToRead.toSeq.map { tp =>
+      DatahubOffsetRange(tp, fromOffsets(tp), untilOffsets(tp))
+    }.filter(_.size > 0)
+
+    // Generate factories based on the offset ranges
+    // toDDL @since spark 2.4.0, 2.3.4 don't support, by gaoju 2020-08-14
+    offsetRanges.map { range => {
+      val schemaDDL: String = readSchema().fields.map(filed => {
+        val comment = filed.getComment()
+          .map(escapeSingleQuotedString)
+          .map(" COMMENT '" + _ + "'")
+
+        s"${quoteIdentifier(filed.name)} ${filed.dataType.sql}${comment.getOrElse("")}"
+      }).mkString(",")
+      new DatahubMicroBatchReaderFactory(range, failOnDataLoss,
+        sourceOptions.asMap().asScala.toMap, schemaDDL): DataReaderFactory[Row]
+    }
+    }.asJava
+  }
+}
+
+@Deprecated
+case class DatahubMicroBatchReaderFactory(
+                                           offsetRange: DatahubOffsetRange,
+                                           failOnDataLoss: Boolean,
+                                           sourceOptions: Map[String, String],
+                                           schemaDdl: String
+                                         )
+  extends DataReaderFactory[Row] {
+  override def createDataReader(): DataReader[Row] = {
+    new DatahubMicroBatchOldReader()
+  }
+}
+
+@Deprecated
+class DatahubMicroBatchOldReader() extends DataReader[Row] {
+  override def next(): Boolean = true
+  override def get(): Row = Row.fromSeq({""})
+  override def close(): Unit = {}
 }

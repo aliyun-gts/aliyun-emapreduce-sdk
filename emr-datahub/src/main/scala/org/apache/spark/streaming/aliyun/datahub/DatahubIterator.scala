@@ -20,11 +20,10 @@ package org.apache.spark.streaming.aliyun.datahub
 import java.util.concurrent.LinkedBlockingQueue
 
 import scala.collection.JavaConverters._
-
 import com.aliyun.datahub.model.{OffsetContext, RecordEntry}
 import org.I0Itec.zkclient.ZkClient
-
 import org.apache.spark.TaskContext
+import org.apache.spark.executor.InputMetrics
 import org.apache.spark.internal.Logging
 import org.apache.spark.util.NextIterator
 
@@ -47,7 +46,7 @@ private class DatahubIterator(
   private var dataBuffer = new LinkedBlockingQueue[Array[Byte]](step)
   private var hasRead = 0
   private var lastOffset: OffsetContext.Offset = null
-  private val inputMetrcis = context.taskMetrics().inputMetrics
+  private val inputMetrics = context.taskMetrics().inputMetrics
   private var nextCursor = cursor
 
   override protected def getNext(): Array[Byte] = {
@@ -64,7 +63,10 @@ private class DatahubIterator(
 
   override protected def close() = {
     try {
-      inputMetrcis.incRecordsRead(hasRead)
+      /**
+       * 兼容spark 2.3.4版本修改如下代码, gaoju 2020-08-13
+       */
+      // inputMetrics.incRecordsRead(hasRead)
       dataBuffer.clear()
       dataBuffer = null
     } catch {
