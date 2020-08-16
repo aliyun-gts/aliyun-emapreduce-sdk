@@ -23,7 +23,7 @@ import org.apache.spark.{Partition, SparkContext, TaskContext}
 import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.aliyun.datahub.DatahubOffsetRangeLimit._
 import org.apache.spark.sql.catalyst.InternalRow
-import org.apache.spark.sql.types.StructType
+import org.apache.spark.sql.types.{StructType, StructTypeUtil}
 import org.apache.spark.util.NextIterator
 
 class DatahubSourceRDD(
@@ -56,7 +56,7 @@ class DatahubSourceRDD(
         }
       }
       // Release consumer, either by removing it or indicating we're no longer using it
-      context.addTaskCompletionListener[Unit] { _ =>
+      context.addTaskCompletionListener { _ =>
         underlying.closeIfNeeded()
       }
       underlying
@@ -110,7 +110,7 @@ class DatahubSourceRDD(
 
     // Generate factories based on the offset ranges
     offsetRanges.zipWithIndex.map { case (range, idx) =>
-      DatahubInputPartition(idx, range, parameters, schema.toDDL): Partition
+      DatahubInputPartition(idx, range, parameters, StructTypeUtil.toDDL(schema)): Partition
     }.toArray
   }
 

@@ -23,7 +23,7 @@ import org.apache.spark.sql._
 import org.apache.spark.sql.catalyst.encoders.RowEncoder
 import org.apache.spark.sql.catalyst.expressions.UnsafeRow
 import org.apache.spark.sql.sources.{BaseRelation, InsertableRelation, TableScan}
-import org.apache.spark.sql.types.StructType
+import org.apache.spark.sql.types.{StructType, StructTypeUtil}
 
 class DatahubRelation(
     override val sqlContext: SQLContext,
@@ -41,7 +41,7 @@ class DatahubRelation(
   override def insert(data: DataFrame, overwrite: Boolean): Unit = {
     val project = parameters.get(DatahubSourceProvider.OPTION_KEY_PROJECT).map(_.trim)
     val topic = parameters.get(DatahubSourceProvider.OPTION_KEY_TOPIC).map(_.trim)
-    val schemaDDL = schema.toDDL
+    val schemaDDL = StructTypeUtil.toDDL(schema)
     data.foreachPartition { it =>
       val encoderForDataColumns = RowEncoder(StructType.fromDDL(schemaDDL)).resolveAndBind()
       val writer = new DatahubWriter(project, topic, parameters, None)

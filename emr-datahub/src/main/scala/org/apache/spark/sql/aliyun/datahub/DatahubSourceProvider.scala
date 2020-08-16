@@ -22,22 +22,20 @@ import java.util.concurrent.locks.{ReadWriteLock, ReentrantReadWriteLock}
 
 import scala.collection.JavaConverters._
 import scala.collection.mutable
-
 import com.aliyun.datahub.client.{DatahubClient, DatahubClientBuilder}
 import com.aliyun.datahub.client.auth.AliyunAccount
 import com.aliyun.datahub.client.common.DatahubConfig
 import com.aliyun.datahub.client.http.HttpConfig
 import org.apache.commons.cli.MissingArgumentException
-
 import org.apache.spark.internal.Logging
-import org.apache.spark.sql.{AnalysisException, DataFrame, SaveMode, SQLContext}
+import org.apache.spark.sql.{AnalysisException, DataFrame, SQLContext, SaveMode}
 import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.sources._
 import org.apache.spark.sql.sources.v2._
 import org.apache.spark.sql.sources.v2.reader.streaming.{ContinuousReader, MicroBatchReader}
 import org.apache.spark.sql.sources.v2.writer.streaming.StreamWriter
 import org.apache.spark.sql.streaming.OutputMode
-import org.apache.spark.sql.types.StructType
+import org.apache.spark.sql.types.{StructType, StructTypeUtil}
 
 class DatahubSourceProvider extends DataSourceRegister
   with MicroBatchReadSupport
@@ -89,7 +87,7 @@ class DatahubSourceProvider extends DataSourceRegister
       checkpointLocation,
       startingStreamOffsets,
       caseInsensitiveParams.getOrElse("failondataloss", "true").toBoolean,
-      Some(schema.orElse(new StructType()).toDDL))
+      Some(StructTypeUtil.toDDL(schema.orElse(new StructType()))))
   }
 
   override def createStreamWriter(

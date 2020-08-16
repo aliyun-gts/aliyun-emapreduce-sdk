@@ -23,18 +23,17 @@ import java.nio.charset.StandardCharsets
 import java.util.Optional
 
 import scala.collection.JavaConverters._
-
 import org.apache.commons.io.IOUtils
-
 import org.apache.spark.internal.Logging
 import org.apache.spark.sql.SparkSession
 import org.apache.spark.sql.aliyun.datahub.DatahubSourceProvider._
 import org.apache.spark.sql.catalyst.InternalRow
+import org.apache.spark.sql.catalyst.util.quoteIdentifier
 import org.apache.spark.sql.execution.streaming.{HDFSMetadataLog, SerializedOffset}
 import org.apache.spark.sql.sources.v2.DataSourceOptions
 import org.apache.spark.sql.sources.v2.reader.InputPartition
 import org.apache.spark.sql.sources.v2.reader.streaming.{MicroBatchReader, Offset}
-import org.apache.spark.sql.types.StructType
+import org.apache.spark.sql.types.{StructType, StructTypeUtil}
 
 class DatahubMicroBatchReader(
     @transient offsetReader: DatahubOffsetReader,
@@ -206,7 +205,8 @@ class DatahubMicroBatchReader(
     // Generate factories based on the offset ranges
     offsetRanges.map { range =>
       new DatahubMicroBatchInputPartition(range, failOnDataLoss,
-        sourceOptions.asMap().asScala.toMap, readSchema().toDDL): InputPartition[InternalRow]
+        sourceOptions.asMap().asScala.toMap,
+        StructTypeUtil.toDDL(readSchema())): InputPartition[InternalRow]
     }.asJava
   }
 
