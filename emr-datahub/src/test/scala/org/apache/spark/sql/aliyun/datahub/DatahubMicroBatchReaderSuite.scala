@@ -91,8 +91,12 @@ abstract class DatahubMicroBatchReaderSuiteBase
         query.get.lastExecution match {
           case null => Seq()
           case e => e.logical.collect {
-            case StreamingDataSourceV2Relation(_, _, _, reader: DatahubMicroBatchReader) => reader
-            case StreamingDataSourceV2Relation(_, _, _, reader: DatahubContinuousReader) => reader
+            case e: StreamingDataSourceV2Relation
+              if e.reader.isInstanceOf[DatahubMicroBatchReader] =>
+              e.reader.asInstanceOf[DatahubMicroBatchReader]
+            case e: StreamingDataSourceV2Relation
+              if e.reader.isInstanceOf[DatahubContinuousReader] =>
+              e.reader.asInstanceOf[DatahubContinuousReader]
           }
         }
       }.distinct

@@ -28,7 +28,7 @@ import com.aliyun.datahub.client.common.DatahubConfig
 import com.aliyun.datahub.client.http.HttpConfig
 import org.apache.commons.cli.MissingArgumentException
 import org.apache.spark.internal.Logging
-import org.apache.spark.sql.{AnalysisException, DataFrame, SQLContext, SaveMode}
+import org.apache.spark.sql.{AnalysisException, DataFrame, Row, SQLContext, SaveMode}
 import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.sources._
 import org.apache.spark.sql.sources.v2._
@@ -131,7 +131,7 @@ class DatahubSourceProvider extends DataSourceRegister
     data.foreachPartition { it =>
       val writer = new DatahubWriter(project, topic, parameters, None)
         .createWriterFactory().createDataWriter(-1, -1, -1)
-      it.foreach(t => writer.write(t.asInstanceOf[InternalRow]))
+      it.foreach(t => writer.write(t))
     }
 
     /* This method is suppose to return a relation that reads the data that was written.

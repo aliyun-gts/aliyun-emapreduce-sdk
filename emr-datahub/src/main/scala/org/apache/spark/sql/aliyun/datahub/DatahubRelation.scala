@@ -46,7 +46,7 @@ class DatahubRelation(
       val encoderForDataColumns = RowEncoder(StructType.fromDDL(schemaDDL)).resolveAndBind()
       val writer = new DatahubWriter(project, topic, parameters, None)
         .createWriterFactory().createDataWriter(-1, -1, -1)
-      it.foreach(t => writer.write(encoderForDataColumns.toRow(t).asInstanceOf[UnsafeRow]))
+      it.foreach(t => writer.write(t))
     }
   }
 }

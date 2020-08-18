@@ -17,6 +17,7 @@
 
 package org.apache.spark.sql.aliyun.datahub
 
+import org.apache.spark.sql.Row
 import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.sources.v2.writer.{DataSourceWriter, DataWriter, DataWriterFactory, WriterCommitMessage}
 import org.apache.spark.sql.types.StructType
@@ -42,12 +43,12 @@ case class DatahubWriterFactory(
     project: Option[String],
     topic: Option[String],
     datahubParams: Map[String, String],
-    schema: Option[StructType]) extends DataWriterFactory[InternalRow] {
+    schema: Option[StructType]) extends DataWriterFactory[Row] {
 
   override def createDataWriter(
       partitionId: Int,
       taskId: Long,
-      epochId: Long): DataWriter[InternalRow] = {
+      epochId: Long): DataWriter[Row] = {
     new DatahubDataWriter(project, topic, datahubParams, schema)
   }
 }

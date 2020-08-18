@@ -18,6 +18,7 @@
 package org.apache.spark.sql.sources.v2.writer;
 
 import org.apache.spark.annotation.InterfaceStability;
+import org.apache.spark.sql.Row;
 import org.apache.spark.sql.SaveMode;
 import org.apache.spark.sql.catalyst.InternalRow;
 import org.apache.spark.sql.sources.v2.DataSourceOptions;
@@ -61,7 +62,7 @@ public interface DataSourceWriter {
      * If this method fails (by throwing an exception), the action will fail and no Spark job will be
      * submitted.
      */
-    DataWriterFactory<InternalRow> createWriterFactory();
+    DataWriterFactory<Row> createWriterFactory();
 
     /**
      * Returns whether Spark should use the commit coordinator to ensure that at most one task for
