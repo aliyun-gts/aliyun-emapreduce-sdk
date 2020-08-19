@@ -17,9 +17,10 @@
 package org.apache.spark.sql.aliyun.logservice
 
 import scala.collection.mutable.ArrayBuffer
-
 import org.apache.spark.internal.Logging
 import org.apache.spark.rdd.RDD
+import org.apache.spark.sql.catalyst.util.quoteIdentifier
+import org.apache.spark.sql.catalyst.util24.escapeSingleQuotedString
 import org.apache.spark.sql.{DataFrame, Row, SQLContext}
 import org.apache.spark.sql.sources.{BaseRelation, InsertableRelation, TableScan}
 import org.apache.spark.sql.types.StructType
@@ -57,8 +58,17 @@ class LoghubRelation(
       val eof = untilPartitionOffsets(loghubShard)
       shardOffsets.+=((loghubShard.shard, sof, eof))
     }
+    // toDDL @since spark 2.4.0, 2.3.4 don't support, by gaoju 2020-08-14
+    // val schemaDDL = schema.toDDL
+    val schemaDDL: String = schema.fields.map(filed => {
+      val comment = filed.getComment()
+        .map(escapeSingleQuotedString)
+        .map(" COMMENT '" + _ + "'")
+
+      s"${quoteIdentifier(filed.name)} ${filed.dataType.sql}${comment.getOrElse("")}"
+    }).mkString(",")
     val rdd = new LoghubSourceRDD(sqlContext.sparkContext, shardOffsets, schema.fieldNames,
-      schema.toDDL, defaultSchema, sourceOptions)
+      schemaDDL, defaultSchema, sourceOptions)
     sqlContext.internalCreateDataFrame(rdd, schema).rdd
   }
 

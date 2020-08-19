@@ -17,14 +17,18 @@
 package org.apache.spark.sql.aliyun.dts
 
 import org.apache.kafka.clients.consumer.ConsumerRecord
-
 import org.apache.spark.sql.catalyst.expressions.UnsafeRow
-import org.apache.spark.sql.catalyst.expressions.codegen.UnsafeRowWriter
+import org.apache.spark.sql.catalyst.expressions.codegen.{BufferHolder, UnsafeRowWriter}
 import org.apache.spark.sql.catalyst.util.DateTimeUtils
 import org.apache.spark.unsafe.types.UTF8String
 
 class DTSRecordToUnsafeRowConverter {
-  private val rowWriter = new UnsafeRowWriter(7)
+  /**
+   * 兼容spark 2.3.4版本增加如下代码, gaoju 2020-08-13
+   */
+  // private val rowWriter = new UnsafeRowWriter(7)
+  private val unsafeRow: UnsafeRow = new UnsafeRow()
+  private val rowWriter = new UnsafeRowWriter(new BufferHolder(unsafeRow),7)
 
   def toUnsafeRow(record: ConsumerRecord[Array[Byte], Array[Byte]]): UnsafeRow = {
     rowWriter.reset()
@@ -47,6 +51,10 @@ class DTSRecordToUnsafeRowConverter {
       5,
       DateTimeUtils.fromJavaTimestamp(new java.sql.Timestamp(record.timestamp)))
     rowWriter.write(6, record.timestampType.id)
-    rowWriter.getRow
+    /**
+     * 兼容spark 2.3.4版本修改如下代码，注释掉2.3.4不支持的getRow方法调用，直接返回unsafeRow, gaoju 2020-08-13
+     */
+    // rowWriter.getRow
+    unsafeRow
   }
 }

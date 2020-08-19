@@ -58,7 +58,7 @@ object StructuredTableStoreAggSample extends Logging {
       .master("local[16]")
       .getOrCreate()
 
-    spark.sparkContext.setLogLevel("WARN")
+//    spark.sparkContext.setLogLevel("WARN")
 
     val lines = spark.readStream
       .format("tablestore")

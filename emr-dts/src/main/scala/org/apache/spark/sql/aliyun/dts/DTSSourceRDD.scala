@@ -91,7 +91,7 @@ class DTSSourceRDD(
         }
       }
       // Release consumer, either by removing it or indicating we're no longer using it
-      context.addTaskCompletionListener[Unit] { _ =>
+      context.addTaskCompletionListener { _ =>
         underlying.closeIfNeeded()
       }
       underlying

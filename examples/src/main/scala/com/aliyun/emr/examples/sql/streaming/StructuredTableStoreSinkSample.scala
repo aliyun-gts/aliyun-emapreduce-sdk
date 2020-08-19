@@ -42,7 +42,7 @@ object StructuredTableStoreSinkSample {
       .appName("StructuredTableStoreSinkSample")
       .getOrCreate()
 
-    spark.sparkContext.setLogLevel("WARN")
+//    spark.sparkContext.setLogLevel("WARN")
 
     import spark.implicits._
 

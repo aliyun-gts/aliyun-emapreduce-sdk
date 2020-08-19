@@ -22,6 +22,7 @@ import org.apache.spark.sql.{DataFrame, SQLContext}
 import org.apache.spark.sql.execution.datasources.jdbc.{JDBCOptions, JDBCRelation}
 import org.apache.spark.sql.execution.streaming.{Offset, Source}
 import org.apache.spark.sql.types.StructType
+import org.apache.spark.sql.aliyun.jdbc2.JdbcUtils._
 
 class JdbcSource(
     sqlContext: SQLContext,
@@ -31,7 +32,7 @@ class JdbcSource(
   val resolver = sqlContext.conf.resolver
 
   override def schema: StructType =
-    userSpecifiedschema.getOrElse(JDBCRelation.getSchema(resolver, jdbcOptions))
+    userSpecifiedschema.getOrElse(getSchema(resolver, jdbcOptions))
 
   override def getOffset: Option[Offset] = {
     throw new UnsupportedOperationException("unsupport jdbc datasource.")

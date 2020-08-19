@@ -52,7 +52,7 @@ object StructuredTableStoreWordCount {
       .master("local[5]")
       .getOrCreate()
 
-    spark.sparkContext.setLogLevel("WARN")
+//    spark.sparkContext.setLogLevel("WARN")
 
     import spark.implicits._
 

@@ -276,7 +276,9 @@ class JdbcSink(
 
   private def getJdbcSchame(): StructType = {
     val resolver = sqlContext.conf.resolver
-    JDBCRelation.getSchema(resolver, options)
+    // getSchema @since spark 2.4.0, 2.3.4 don't support, by gaoju 2020-08-14
+    // JDBCRelation.getSchema(resolver, options)
+    getSchema(resolver, options)
   }
 
   def isFastLoad() : Boolean = {

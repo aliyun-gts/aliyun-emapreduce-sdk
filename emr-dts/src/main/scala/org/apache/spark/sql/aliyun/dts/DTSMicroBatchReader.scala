@@ -22,15 +22,14 @@ import java.util
 import java.util.Optional
 
 import scala.collection.JavaConverters._
-
 import org.apache.commons.io.IOUtils
-
+import org.apache.kafka.common.TopicPartition
 import org.apache.spark.internal.Logging
-import org.apache.spark.sql.SparkSession
+import org.apache.spark.sql.{Row, SparkSession}
 import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.execution.streaming.{HDFSMetadataLog, SerializedOffset}
 import org.apache.spark.sql.sources.v2.DataSourceOptions
-import org.apache.spark.sql.sources.v2.reader.InputPartition
+import org.apache.spark.sql.sources.v2.reader.{DataReader, DataReaderFactory, InputPartition}
 import org.apache.spark.sql.sources.v2.reader.streaming.{MicroBatchReader, Offset}
 import org.apache.spark.sql.types._
 import org.apache.spark.util.UninterruptibleThread
@@ -85,7 +84,7 @@ class DTSMicroBatchReader(
 
   override def readSchema(): StructType = DTSSourceProvider.getSchema
 
-  override def planInputPartitions(): util.List[InputPartition[InternalRow]] = {
+  def planInputPartitions(): util.List[InputPartition[InternalRow]] = {
     val fromOffsets = startPartitionOffset
     val untilOffsets = endPartitionOffset
 
@@ -98,6 +97,8 @@ class DTSMicroBatchReader(
       ).asInstanceOf[InputPartition[InternalRow]]
     ).asJava
   }
+
+
 
   override def stop(): Unit = {
     dtsOffsetReader.close()
@@ -174,4 +175,42 @@ class DTSMicroBatchReader(
       }
     }
   }
+
+  /**
+   * 兼容spark 2.3.4版本增加 override createDataReaderFactories 代码，代码本身并无实际调用, gaoju 2020-08-13
+   **/
+  @Deprecated
+  override def createDataReaderFactories(): util.List[DataReaderFactory[Row]] = {
+    val fromOffsets = startPartitionOffset
+    val untilOffsets = endPartitionOffset
+
+    Seq(
+      new DTSMicroBatchReaderFactory(
+        fromOffsets._1,
+        fromOffsets._2,
+        untilOffsets._2,
+        options.asMap()
+      ).asInstanceOf[DataReaderFactory[Row]]
+    ).asJava
+  }
+}
+
+@Deprecated
+case class DTSMicroBatchReaderFactory(
+                                       tp: TopicPartition,
+                                       startOffset: Long,
+                                       endOffset: Long,
+                                       options: util.Map[String, String]
+                                         )
+  extends DataReaderFactory[Row] {
+  override def createDataReader(): DataReader[Row] = {
+    new DTSMicroBatchOldReader()
+  }
+}
+
+@Deprecated
+class DTSMicroBatchOldReader() extends DataReader[Row] {
+  override def next(): Boolean = true
+  override def get(): Row = Row.fromSeq({""})
+  override def close(): Unit = {}
 }

@@ -23,7 +23,6 @@ import java.util.Locale
 import scala.collection.JavaConverters._
 import scala.util.Try
 import scala.util.control.NonFatal
-
 import org.apache.spark.TaskContext
 import org.apache.spark.executor.InputMetrics
 import org.apache.spark.internal.Logging
@@ -34,7 +33,7 @@ import org.apache.spark.sql.catalyst.encoders.RowEncoder
 import org.apache.spark.sql.catalyst.expressions.SpecificInternalRow
 import org.apache.spark.sql.catalyst.parser.CatalystSqlParser
 import org.apache.spark.sql.catalyst.util.{CaseInsensitiveMap, DateTimeUtils, GenericArrayData}
-import org.apache.spark.sql.execution.datasources.jdbc.{DriverRegistry, DriverWrapper, JDBCOptions}
+import org.apache.spark.sql.execution.datasources.jdbc.{DriverRegistry, DriverWrapper, JDBCOptions, JDBCRDD}
 import org.apache.spark.sql.execution.datasources.jdbc.JDBCOptions.JDBC_TABLE_NAME
 import org.apache.spark.sql.jdbc.{JdbcDialect, JdbcDialects, JdbcType}
 import org.apache.spark.sql.types._
@@ -405,7 +404,8 @@ object JdbcUtils extends Logging {
     val inputMetrics =
       Option(TaskContext.get())
         .map(_.taskMetrics().inputMetrics)
-        .getOrElse(new InputMetrics)
+        .getOrElse[InputMetrics](new InputMetrics())
+
     val encoder = RowEncoder(schema).resolveAndBind()
     val internalRows =
       resultSetToSparkInternalRows(resultSet, schema, inputMetrics)
@@ -1237,4 +1237,28 @@ object JdbcUtils extends Logging {
       table
     }
   }
+
+
+  /**
+   * Takes a (schema, table) specification and returns the table's Catalyst schema.
+   * If `customSchema` defined in the JDBC options, replaces the schema's dataType with the
+   * custom schema's type.
+   *
+   * @param resolver function used to determine if two identifiers are equal
+   * @param jdbcOptions JDBC options that contains url, table and other information.
+   * @return resolved Catalyst schema of a JDBC table
+   *
+   * 兼容spark 2.3.4版本增加2.4.3版本函数 JDBCRelation.getSchema, gaoju 2020-08-13
+   *
+   */
+  def getSchema(resolver: Resolver, jdbcOptions: JDBCOptions): StructType = {
+    val tableSchema = JDBCRDD.resolveTable(jdbcOptions)
+    jdbcOptions.customSchema match {
+      case Some(customSchema) => JdbcUtils.getCustomSchema(
+        tableSchema, customSchema, resolver)
+      case None => tableSchema
+    }
+  }
+
+
 }

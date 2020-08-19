@@ -23,14 +23,14 @@ import java.util.concurrent.LinkedBlockingQueue
 import com.alibaba.fastjson.JSONObject
 import com.aliyun.openservices.log.common.Consts.CursorMode
 import com.aliyun.openservices.log.response.BatchGetLogResponse
-
 import org.apache.spark.TaskContext
 import org.apache.spark.internal.Logging
+import org.apache.spark.sql.Row
 import org.apache.spark.sql.aliyun.logservice.LoghubSourceProvider._
 import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.catalyst.expressions.UnsafeRow
-import org.apache.spark.sql.catalyst.expressions.codegen.UnsafeRowWriter
-import org.apache.spark.sql.sources.v2.reader.{ContinuousInputPartition, InputPartition, InputPartitionReader}
+import org.apache.spark.sql.catalyst.expressions.codegen.{BufferHolder, UnsafeRowWriter}
+import org.apache.spark.sql.sources.v2.reader.{ContinuousInputPartition, DataReader, DataReaderFactory, InputPartition, InputPartitionReader}
 import org.apache.spark.sql.sources.v2.reader.streaming._
 import org.apache.spark.sql.types._
 import org.apache.spark.unsafe.types.UTF8String
@@ -82,7 +82,7 @@ class LoghubContinuousReader(
 
   override def toString(): String = s"LoghubSource[$offsetReader]"
 
-  override def planInputPartitions(): util.List[InputPartition[InternalRow]] = {
+  def planInputPartitions(): util.List[InputPartition[InternalRow]] = {
     import scala.collection.JavaConverters._
     val startOffsets = LoghubSourceOffset.getShardOffsets(offset, sourceOptions)
     startOffsets.toSeq.map { case (loghubShard, of) =>
@@ -96,6 +96,49 @@ class LoghubContinuousReader(
         defaultSchema): InputPartition[InternalRow]
     }.asJava
   }
+
+  /**
+   * 兼容spark 2.3.4版本增加 override createDataReaderFactories 代码，代码本身并无实际调用, gaoju 2020-08-13
+   **/
+  @Deprecated
+  override def createDataReaderFactories(): util.List[DataReaderFactory[Row]] = {
+    import scala.collection.JavaConverters._
+    val startOffsets = LoghubSourceOffset.getShardOffsets(offset, sourceOptions)
+    startOffsets.toSeq.map { case (loghubShard, of) =>
+      LoghubContinuousReaderFactory(
+        loghubShard.logProject,
+        loghubShard.logStore,
+        loghubShard.shard,
+        of._1,
+        sourceOptions,
+        readSchema.fieldNames,
+        defaultSchema): DataReaderFactory[Row]
+    }.asJava
+  }
+}
+
+
+@Deprecated
+case class LoghubContinuousReaderFactory(
+                                          logProject: String,
+                                          logStore: String,
+                                          shardId: Int,
+                                          offset: Int,
+                                          sourceOptions: Map[String, String],
+                                          schemaFieldNames: Array[String],
+                                          defaultSchema: Boolean
+                                         )
+  extends DataReaderFactory[Row] {
+  override def createDataReader(): DataReader[Row] = {
+    new LoghubContinuousOldReader()
+  }
+}
+
+@Deprecated
+class LoghubContinuousOldReader() extends DataReader[Row] {
+  override def next(): Boolean = true
+  override def get(): Row = Row.fromSeq({""})
+  override def close(): Unit = {}
 }
 
 case class LoghubContinuousInputPartition(
@@ -152,7 +195,13 @@ class LoghubContinuousInputPartitionReader(
     logServiceClient.GetCursor(logProject, logStore, shardId, CursorMode.END).GetCursor()
   // TODO: This may cost too much memory.
   private val logData = new LinkedBlockingQueue[LoghubData](4096 * step)
-  private val rowWriter = new UnsafeRowWriter(schemaFieldNames.length)
+  /**
+   * 兼容spark 2.3.4版本增加如下代码, gaoju 2020-08-13
+   */
+  // private val rowWriter = new UnsafeRowWriter(schemaFieldNames.length)
+  private val unsafeRow: UnsafeRow = new UnsafeRow()
+  private val rowWriter = new UnsafeRowWriter(new BufferHolder(unsafeRow), schemaFieldNames.length)
+
 
   private var currentRecord: LoghubData = _
 
@@ -285,7 +334,11 @@ class LoghubContinuousInputPartitionReader(
       rowWriter.write(item._2, UTF8String.fromString(item._1.asInstanceOf[String]))
     })
 
-    rowWriter.getRow
+    /**
+     * 兼容spark 2.3.4版本修改如下代码，注释掉2.3.4不支持的getRow方法调用，直接返回unsafeRow, gaoju 2020-08-13
+     */
+    // rowWriter.getRow
+    unsafeRow
   }
 
   override def close(): Unit = {

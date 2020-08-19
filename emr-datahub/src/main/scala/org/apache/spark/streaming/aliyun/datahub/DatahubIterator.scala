@@ -66,7 +66,8 @@ private class DatahubIterator(
       /**
        * 兼容spark 2.3.4版本修改如下代码, gaoju 2020-08-13
        */
-      // inputMetrics.incRecordsRead(hasRead)
+      // inputMetrics.getOrElse[InputMetrics](new InputMetrics()).incRecordsRead(hasRead)
+
       dataBuffer.clear()
       dataBuffer = null
     } catch {
