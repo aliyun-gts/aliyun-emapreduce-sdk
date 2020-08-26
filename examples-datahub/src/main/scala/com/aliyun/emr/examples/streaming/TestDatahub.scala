@@ -2,7 +2,6 @@ package com.aliyun.emr.examples.streaming
 
 
 import com.aliyun.datahub.model.RecordEntry
-
 import org.apache.spark.SparkConf
 import org.apache.spark.storage.StorageLevel
 import org.apache.spark.streaming.{Milliseconds, StreamingContext}
@@ -33,6 +32,8 @@ object TestDatahub {
     val accessKeySecret = args(4)
     val endpoint = args(5)
     val batchInterval = Milliseconds(args(6).toInt * 1000)
+
+    println(s"======= project:$project,topic:$topic,subscribe Id:$subId,access key id:$accessKeyId,endpoint:$endpoint,batchInterval:$batchInterval")
 
     def functionToCreateContext(): StreamingContext = {
       val conf = new SparkConf().setAppName("Test Datahub")
@@ -65,7 +66,8 @@ object TestDatahub {
       }
 
       // scalastyle:off
-      datahubStream.checkpoint(batchInterval * 2).foreachRDD(rdd => println(rdd.count()))
+      datahubStream.checkpoint(batchInterval * 2)
+        .foreachRDD(rdd => println("======= batch count:" + rdd.count()))
       // scalastyle:on
       ssc.checkpoint("hdfs:///tmp/spark/streaming") // set checkpoint directory
       ssc
