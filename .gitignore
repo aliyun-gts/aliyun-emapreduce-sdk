@@ -14,6 +14,7 @@ emr-kafka/target/*
 emr-datahub/target/*
 emr-druid/target/*
 examples/target/*
+examples-datahub/target/*
 emr-hbase/target/*
 emr-jdbc/target/*
 emr-redis/target/*
