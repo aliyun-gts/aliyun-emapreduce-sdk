@@ -25,7 +25,7 @@ import org.apache.spark.sql.catalyst.expressions.UnsafeRow
 import org.apache.spark.sql.catalyst.util.quoteIdentifier
 import org.apache.spark.sql.catalyst.util24.escapeSingleQuotedString
 import org.apache.spark.sql.sources.{BaseRelation, InsertableRelation, TableScan}
-import org.apache.spark.sql.types.StructType
+import org.apache.spark.sql.types.{StructType, StructTypeUtil}
 
 class DatahubRelation(
     override val sqlContext: SQLContext,
@@ -52,6 +52,7 @@ class DatahubRelation(
 
       s"${quoteIdentifier(filed.name)} ${filed.dataType.sql}${comment.getOrElse("")}"
     }).mkString(",")
+
     data.foreachPartition { it =>
       val encoderForDataColumns = RowEncoder(StructType.fromDDL(schemaDDL)).resolveAndBind()
       val writer = new DatahubWriter(project, topic, parameters, None)

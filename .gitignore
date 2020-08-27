@@ -25,3 +25,4 @@ assembly/target/*
 *.iml
 log.txt
 .DS_Store
+.java-version

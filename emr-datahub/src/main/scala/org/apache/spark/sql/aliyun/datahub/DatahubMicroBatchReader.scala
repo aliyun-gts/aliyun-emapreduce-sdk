@@ -22,6 +22,8 @@ import java.nio.charset.StandardCharsets
 import java.util.Optional
 import java.util
 
+import scala.collection.JavaConverters._
+
 import org.apache.commons.io.IOUtils
 import org.apache.spark.internal.Logging
 import org.apache.spark.sql.{Row, SparkSession}
@@ -33,9 +35,8 @@ import org.apache.spark.sql.execution.streaming.{HDFSMetadataLog, SerializedOffs
 import org.apache.spark.sql.sources.v2.DataSourceOptions
 import org.apache.spark.sql.sources.v2.reader.{DataReader, DataReaderFactory, InputPartition}
 import org.apache.spark.sql.sources.v2.reader.streaming.{MicroBatchReader, Offset}
-import org.apache.spark.sql.types.StructType
+import org.apache.spark.sql.types.{StructType, StructTypeUtil}
 
-import scala.collection.JavaConverters._
 
 class DatahubMicroBatchReader(
                                @transient offsetReader: DatahubOffsetReader,
