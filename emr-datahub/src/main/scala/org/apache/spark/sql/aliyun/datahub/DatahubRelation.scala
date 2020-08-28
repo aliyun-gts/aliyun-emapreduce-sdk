@@ -22,6 +22,8 @@ import org.apache.spark.rdd.RDD
 import org.apache.spark.sql._
 import org.apache.spark.sql.catalyst.encoders.RowEncoder
 import org.apache.spark.sql.catalyst.expressions.UnsafeRow
+import org.apache.spark.sql.catalyst.util.quoteIdentifier
+import org.apache.spark.sql.catalyst.util24.escapeSingleQuotedString
 import org.apache.spark.sql.sources.{BaseRelation, InsertableRelation, TableScan}
 import org.apache.spark.sql.types.{StructType, StructTypeUtil}
 
@@ -41,12 +43,21 @@ class DatahubRelation(
   override def insert(data: DataFrame, overwrite: Boolean): Unit = {
     val project = parameters.get(DatahubSourceProvider.OPTION_KEY_PROJECT).map(_.trim)
     val topic = parameters.get(DatahubSourceProvider.OPTION_KEY_TOPIC).map(_.trim)
-    val schemaDDL = StructTypeUtil.toDDL(schema)
+    // toDDL @since spark 2.4.0, 2.3.4 don't support, by gaoju 2020-08-14
+    // val schemaDDL = schema.toDDL
+    val schemaDDL: String = schema.fields.map(filed => {
+      val comment = filed.getComment()
+        .map(escapeSingleQuotedString)
+        .map(" COMMENT '" + _ + "'")
+
+      s"${quoteIdentifier(filed.name)} ${filed.dataType.sql}${comment.getOrElse("")}"
+    }).mkString(",")
+
     data.foreachPartition { it =>
       val encoderForDataColumns = RowEncoder(StructType.fromDDL(schemaDDL)).resolveAndBind()
       val writer = new DatahubWriter(project, topic, parameters, None)
         .createWriterFactory().createDataWriter(-1, -1, -1)
-      it.foreach(t => writer.write(t))
+      it.foreach(t => writer.write(encoderForDataColumns.toRow(t).asInstanceOf[Row]))
     }
   }
 }

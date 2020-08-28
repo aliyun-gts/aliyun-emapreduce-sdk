@@ -21,7 +21,6 @@ import java.nio.charset.StandardCharsets
 
 import scala.collection.mutable.ArrayBuffer
 import scala.util.control.NonFatal
-
 import com.aliyun.emr.common.{DynamicConfigManager, ZNodeChangeHandler}
 import org.I0Itec.zkclient.{ZkClient, ZkConnection}
 import org.I0Itec.zkclient.serialize.ZkSerializer
@@ -32,8 +31,9 @@ import org.json4s._
 import org.json4s.JsonAST.JString
 import org.json4s.jackson.JsonMethods._
 import org.json4s.jackson.Serialization
-
 import org.apache.spark.internal.Logging
+import org.apache.spark.sql.catalyst.util.quoteIdentifier
+import org.apache.spark.sql.catalyst.util24.escapeSingleQuotedString
 import org.apache.spark.sql.{DataFrame, SQLContext}
 import org.apache.spark.sql.execution.streaming.{HDFSMetadataLog, Offset, SerializedOffset, Source}
 import org.apache.spark.sql.types.StructType
@@ -154,8 +154,19 @@ class LoghubSource(
     newShards.toSeq.foreach(shard => {
       shardOffsets.+=((shard.shard, earliest(shard)._1, untilShardOffsets(shard)._1))
     })
+
+    // toDDL @since spark 2.4.0, 2.3.4 don't support, by gaoju 2020-08-14
+    // val schemaDDL: String = schema.toDDL
+    val schemaDDL: String = schema.fields.map(filed => {
+      val comment = filed.getComment()
+        .map(escapeSingleQuotedString)
+        .map(" COMMENT '" + _ + "'")
+
+      s"${quoteIdentifier(filed.name)} ${filed.dataType.sql}${comment.getOrElse("")}"
+    }).mkString(",")
+
     val rdd = new LoghubSourceRDD(sqlContext.sparkContext, shardOffsets, schema.fieldNames,
-      schema.toDDL, defaultSchema, sourceOptions)
+      schemaDDL, defaultSchema, sourceOptions)
 
     sqlContext.internalCreateDataFrame(rdd, schema, isStreaming = true)
   }
